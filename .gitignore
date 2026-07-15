@@ -23,6 +23,8 @@ movie_data/ratings.csv
 movie_data/movies.csv
 movie_data/users.csv
 
+EXPLAIN.md
+
 # IDE
 .idea/
 .vscode/

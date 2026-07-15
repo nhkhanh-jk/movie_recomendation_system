@@ -62,7 +62,8 @@ class ContentBasedRecommender:
 
         idx = self.movie_idx[title]
         sim_scores = sorted(enumerate(self.sim_matrix[idx]), key=lambda x: x[1], reverse=True)
-        sim_scores = [(i, s) for i, s in sim_scores if i != idx][:top_k]
+        sim_scores = [(i, s) for i, s in sim_scores if i != idx]
+        sim_scores = sim_scores[:top_k]
 
         indices = [i for i, _ in sim_scores]
         scores  = [s for _, s in sim_scores]
