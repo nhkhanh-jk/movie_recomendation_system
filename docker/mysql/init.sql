@@ -27,5 +27,5 @@ CREATE TABLE IF NOT EXISTS users_raw (
     gender     VARCHAR(1),          
     age        INT,
     occupation INT,
-    zip_code   VARCHAR(20)
+    zipcode   VARCHAR(20)
 );
