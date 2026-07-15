@@ -1,3 +1,4 @@
+import mlflow
 import argparse
 import os
 import sys
@@ -15,33 +16,69 @@ MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
 def train(args) -> None:
     movies, ratings, _ = load_all()
-    train_ratings, _   = train_test_split(ratings)
-    all_ids            = movies["movie_id"].tolist()
+    train_ratings, test_ratings = train_test_split(ratings)
+    all_ids                     = movies["movie_id"].tolist()
 
+    mlflow.set_experiment("movie-recommendation")
+
+    # ── Content-Based (không có hyperparams để log) ─────────────────
     print("\n[1/4] Content-Based...")
     cb = ContentBasedRecommender()
     cb.fit(movies)
     cb.save()
 
+    # ── SVD ─────────────────────────────────────────────────────────
     print("\n[2/4] SVD...")
-    svd = MatrixFactorizationRecommender(algorithm="svd", n_epochs=20)
-    svd.fit(train_ratings, all_ids)
-    svd._movies = movies
-    svd.save()
+    with mlflow.start_run(run_name="SVD"):
+        n_epochs  = 20
+        n_factors = 100
+        mlflow.log_param("algorithm", "svd")
+        mlflow.log_param("n_epochs",  n_epochs)
+        mlflow.log_param("n_factors", n_factors)
 
+        svd = MatrixFactorizationRecommender(
+            algorithm="svd", n_epochs=n_epochs, n_factors=n_factors
+        )
+        svd.fit(train_ratings, all_ids)
+        svd._movies = movies
+        svd.save()
+
+        ev = Evaluator(test_ratings, train_ratings, movies)
+        mf_metrics = ev.evaluate_mf_ratings(svd, label="SVD")
+        mlflow.log_metric("rmse", round(mf_metrics["rmse"], 4))
+        mlflow.log_metric("mae",  round(mf_metrics["mae"],  4))
+
+    # ── SVD++ (optional) ────────────────────────────────────────────
     if args.full:
         print("\n[3/4] SVD++...")
-        svdpp = MatrixFactorizationRecommender(algorithm="svdpp", n_epochs=20)
-        svdpp.fit(train_ratings, all_ids)
-        svdpp._movies = movies
-        svdpp.save()
+        with mlflow.start_run(run_name="SVD++"):
+            mlflow.log_param("algorithm", "svdpp")
+            mlflow.log_param("n_epochs",  20)
+
+            svdpp = MatrixFactorizationRecommender(algorithm="svdpp", n_epochs=20)
+            svdpp.fit(train_ratings, all_ids)
+            svdpp._movies = movies
+            svdpp.save()
+
+            ev = Evaluator(test_ratings, train_ratings, movies)
+            mf_metrics = ev.evaluate_mf_ratings(svdpp, label="SVD++")
+            mlflow.log_metric("rmse", round(mf_metrics["rmse"], 4))
+            mlflow.log_metric("mae",  round(mf_metrics["mae"],  4))
     else:
         print("\n[3/4] Skipping SVD++ (pass --full to include it)")
 
+    # ── Hybrid ──────────────────────────────────────────────────────
     print("\n[4/4] Hybrid (CB + SVD)...")
-    hybrid = HybridRecommender(mf_algo="svd")
-    hybrid.fit(movies, train_ratings)
-    hybrid.save()
+    with mlflow.start_run(run_name="Hybrid"):
+        alpha_warm = 0.3
+        alpha_cold = 0.85
+        mlflow.log_param("mf_algo",    "svd")
+        mlflow.log_param("alpha_warm", alpha_warm)
+        mlflow.log_param("alpha_cold", alpha_cold)
+
+        hybrid = HybridRecommender(mf_algo="svd")
+        hybrid.fit(movies, train_ratings)
+        hybrid.save()
 
     print("\nDone. Models saved to models/\n")
 
