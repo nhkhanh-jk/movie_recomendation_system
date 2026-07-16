@@ -1,23 +1,40 @@
 import os
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 
-MYSQL_URL    = "mysql+pymysql://mluser:mlpassword@localhost:3306/movielens_oltp"
-POSTGRES_URL = "postgresql+psycopg2://mluser:mlpassword@localhost:5432/movielens_olap"
+MYSQL_URL = (
+    f"mysql+pymysql://mluser:mlpassword@"
+    f"{os.getenv('MYSQL_HOST', 'localhost')}:3306/movielens_oltp"
+)
+POSTGRES_URL = (
+    f"postgresql+psycopg2://mluser:mlpassword@"
+    f"{os.getenv('POSTGRES_HOST', 'localhost')}:5432/movielens_olap"
+)
+
 
 mysql_engine    = create_engine(MYSQL_URL)
 postgres_engine = create_engine(POSTGRES_URL)
 
 
-# Transform movies 
+def truncate_all():
+    """Xóa toàn bộ data cũ trước khi ETL — đảm bảo idempotent mỗi lần chạy."""
+    print("Truncating PostgreSQL tables...")
+    with postgres_engine.begin() as conn:
+        conn.execute(text(
+            "TRUNCATE TABLE movie_features, ratings_clean, users_clean RESTART IDENTITY"
+        ))
+    print("✓ Tables cleared")
+
+
+# Transform movies
 def etl_movies():
     print("ETL movies...")
 
     df = pd.read_sql("SELECT * FROM movie_raw", mysql_engine)
 
     # Genres: "Action|Crime|Thriller" → "Action Crime Thriller"
-    df["genres"] = ( 
+    df["genres"] = (
         df["genres"]
         .fillna("Unknown")
         .str.replace("|", " ", regex=False)
@@ -41,7 +58,6 @@ def etl_movies():
     print(f"✓ Done: {len(df)} movies → PostgreSQL")
 
 
-
 def etl_ratings():
     print("ETL ratings (1M rows)...")
 
@@ -56,7 +72,6 @@ def etl_ratings():
         method="multi"
     )
     print(f"✓ Done: {len(df)} ratings → PostgreSQL")
-
 
 
 def etl_users():
@@ -76,6 +91,7 @@ def etl_users():
 
 
 if __name__ == "__main__":
+    truncate_all()   # ← xóa data cũ trước
     etl_movies()
     etl_ratings()
     etl_users()

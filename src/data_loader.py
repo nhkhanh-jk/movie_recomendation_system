@@ -1,7 +1,10 @@
 import pandas as pd
 from sqlalchemy import create_engine
+import os
 
-POSTGRES_URL="postgresql+psycopg2://mluser:mlpassword@localhost:5432/movielens_olap"
+POSTGRES_URL = (
+    f"postgresql+psycopg2://mluser:mlpassword@" f"{os.getenv('POSTGRES_HOST', 'localhost')}:5432/movielens_olap"
+)
 
 def get_engine():
     return create_engine(POSTGRES_URL)

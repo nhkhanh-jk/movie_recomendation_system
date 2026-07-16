@@ -1,4 +1,4 @@
-FROM apache/airflow:2.7.2-python3.10
+FROM apache/airflow:2.10.3-python3.10
 
 USER root
 
@@ -8,5 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 USER airflow
-COPY requirements.txt /requirements.txt
-RUN pip install --no-cache-dir -r /requirements.txt
+# Dùng file riêng để tránh conflict với sqlalchemy bundled trong Airflow
+COPY requirements-airflow.txt /requirements-airflow.txt
+RUN pip install --no-cache-dir -r /requirements-airflow.txt
