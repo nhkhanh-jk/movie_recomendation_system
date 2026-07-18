@@ -1,145 +1,119 @@
-# Movie Recommendation System
+# Movie Recommendation System (MLOps Pipeline)
 
-Built on the [MovieLens 1M](https://grouplens.org/datasets/movielens/1m/) dataset (~1M ratings, 3,883 movies, 6,040 users).
-
-Three approaches are implemented and compared:
-- **Content-Based Filtering** — TF-IDF on genres + decade bucketing, Cosine Similarity
-- **Matrix Factorization** — SVD, SVD++, NMF via [scikit-surprise](https://surpriselib.com/)
-- **Hybrid** — weighted combination of CB and MF with automatic cold-start handling
+A complete movie recommendation system project that handles the entire pipeline: raw data storage, ETL cleaning, model training, metric tracking, and real-time API serving. The entire stack runs inside containerized environments using Docker Compose.
 
 ---
 
-## Project structure
+## System Architecture
 
-```
-movie_recomendation/
-├── movie_data/
-│   ├── movies.csv
-│   ├── ratings.csv
-│   └── users.csv
-├── src/
-│   ├── data_loader.py          # loading, cleaning, temporal train/test split
-│   ├── content_based.py        # TF-IDF + Cosine Similarity recommender
-│   ├── matrix_factorization.py # SVD / SVD++ / NMF recommender
-│   ├── hybrid.py               # weighted hybrid model
-│   └── evaluation.py           # RMSE, MAE, Precision@K, Recall@K, NDCG@K
-├── models/                     # saved model files (.pkl)
-├── main.py                     # CLI entry point
-└── requirements.txt
-```
+Here is how data flows through the system:
 
----
+```mermaid
+graph TD
+    subgraph Storage Layer
+        DB_MYSQL[(MySQL - OLTP)]
+        DB_POSTGRES[(PostgreSQL - OLAP)]
+    end
 
-## Setup
+    subgraph Data Pipeline
+        Airflow[Apache Airflow]
+        ETL[etl.py]
+    end
 
-```bash
-pip install -r requirements.txt
-```
+    subgraph ML & Tracking
+        Train[main.py - Training]
+        MLflow[MLflow - Registry]
+        Models[(Saved Models .pkl)]
+    end
 
-Download the [MovieLens 1M dataset](https://grouplens.org/datasets/movielens/1m/) and place the `.csv` files into `movie_data/`.
+    subgraph Serving Layer
+        API[FastAPI Service]
+        Client([Client / Browser])
+    end
 
----
-
-## Usage
-
-**Train all models:**
-```bash
-python main.py --mode train
-
-# include SVD++ (takes ~5–10 min extra)
-python main.py --mode train --full
-```
-
-**Evaluate and compare models:**
-```bash
-python main.py --mode evaluate --n_users 200
+    %% Flow
+    DB_MYSQL -->|1. Extract| ETL
+    ETL -->|2. Clean & Transform| DB_POSTGRES
+    Airflow -->|Orchestrate| ETL
+    
+    DB_POSTGRES -->|3. Read Clean Data| Train
+    Train -->|4. Log Metrics| MLflow
+    Train -->|5. Save| Models
+    
+    Models -->|6. Load| API
+    DB_POSTGRES -->|7. Query Metadata| API
+    Client -->|8. Request Recs| API
 ```
 
-Sample output:
-```
-╭───────────────┬────────┬────────┬────────┬────────┬───────────┬─────────╮
-│ Model         │  RMSE  │  MAE   │  P@10  │  R@10  │  NDCG@10  │  F1@10  │
-├───────────────┼────────┼────────┼────────┼────────┼───────────┼─────────┤
-│ Content-Based │   —    │   —    │ 0.011  │ 0.019  │   0.015   │  0.012  │
-│ SVD           │ 0.8906 │ 0.6979 │ 0.050  │ 0.030  │   0.057   │  0.034  │
-│ Hybrid        │   —    │   —    │ 0.056  │ 0.058  │   0.071   │  0.042  │
-╰───────────────┴────────┴────────┴────────┴────────┴───────────┴─────────╯
-```
-
-**Get recommendations:**
-```bash
-# movies similar to a title
-python main.py --mode recommend --type item --title "Toy Story (1995)" --top_k 10
-
-# personalized for a user (hybrid by default)
-python main.py --mode recommend --type user --user_id 42 --top_k 10
-
-# pick a specific model
-python main.py --mode recommend --type user --user_id 42 --model svd --top_k 10
-python main.py --mode recommend --type user --user_id 42 --model cb  --top_k 10
-```
-
-**Dataset stats:**
-```bash
-python main.py --mode stats
-```
-
----
-
-## Models
-
-### Content-Based Filtering
-
-Each movie is converted to a TF-IDF vector of its genre tokens plus a decade tag (e.g. `decade_1990`). Cosine similarity is computed between all pairs, producing a 3883×3883 similarity matrix.
-
-For user recommendations, similarity scores are aggregated across all movies the user liked (rating ≥ 3.5), weighted by `(rating - threshold)`, and unseen movies are ranked.
-
-### Matrix Factorization (SVD / SVD++ / NMF)
-
-Learns latent user and item factor vectors that minimize rating prediction error. Training uses an 80/20 temporal split — for each user, the last 20% of ratings by timestamp go to the test set. This mirrors real deployment: train on the past, predict the future.
-
-SVD++ extends SVD by also encoding which items a user has rated (implicit feedback), not just the ratings themselves.
-
-### Hybrid
-
-```
-score(u, i) = alpha * cb_score(u, i) + (1 - alpha) * mf_score(u, i)
-```
-
-Both scores are min-max normalized to [0, 1] before combining so neither scale dominates.
-
-Alpha is chosen automatically:
-- **cold-start user** (< 10 ratings): alpha = 0.85 — lean on CB since MF needs more history
-- **warm user** (≥ 10 ratings): alpha = 0.30 — lean on MF for better personalization
-
----
-
-## Evaluation
-
-Train/test split is temporal per user to avoid data leakage. A movie is "relevant" if the user's true rating ≥ 4.0.
-
-| Metric | Description |
-|--------|------------|
-| RMSE / MAE | Rating prediction error (MF models only) |
-| Precision@K | Fraction of top-K recommendations that are relevant |
-| Recall@K | Fraction of relevant items found in top-K |
-| NDCG@K | Ranking quality — rewards placing relevant items higher |
-| F1@K | Harmonic mean of Precision and Recall |
-
----
-
-## Stack
-
-- `pandas`, `numpy` — data handling
-- `scikit-learn` — TF-IDF, cosine similarity
-- `scikit-surprise` — SVD, SVD++, NMF
-- `joblib` — model serialization
-- `tabulate` — evaluation output formatting
+1. **Raw Data (OLTP):** Stored in a MySQL instance (`movielens_oltp`).
+2. **ETL Pipeline (Airflow):** Apache Airflow orchestrates the daily DAG run. The `etl.py` script extracts raw data from MySQL, cleans genre strings, parses release years, and loads the clean dataset into a PostgreSQL data warehouse (`movielens_olap`).
+3. **Training & Tracking (MLflow):** The training script runs three models: Content-Based, Matrix Factorization (SVD via Surprise), and a Hybrid model. Hyperparameters and evaluation metrics (RMSE, MAE) are automatically logged to MLflow.
+4. **API Serving (FastAPI):** FastAPI loads the trained model pickles to serve recommendations. The models directory is mounted, so any new model trained by Airflow automatically gets loaded by the API without restarting the containers.
 
 ---
 
 ## Dataset
 
-MovieLens 1M — GroupLens Research, University of Minnesota.
+We use the **MovieLens 1M dataset** containing:
+* **1,000,209 ratings** from 6,040 users on 3,900 movies.
+* **Users metadata** (Age, Gender, Occupation, Zip-code).
+* **Movies metadata** (Title, Genres).
 
-> F. Maxwell Harper and Joseph A. Konstan. 2015. The MovieLens Datasets: History and Context. ACM TiiS 5, 4: 29:1–29:19.
+---
+
+## Recommendation Algorithms
+
+* **Content-Based Filtering (CB):**
+  * Computes movie similarities by applying a **TF-IDF Vectorizer** on movie genres, followed by **Cosine Similarity**.
+  * Recommends items similar to what the user has highly rated in the past.
+* **Collaborative Filtering (SVD):**
+  * A Matrix Factorization approach implemented using the `scikit-surprise` library.
+  * Learns latent features of users and movies to predict ratings.
+* **Hybrid Recommender:**
+  * Combines both CB and SVD models using a weighted ensemble score.
+  * Uses a custom fallback mechanism: if a user is new (cold-start), it weights heavily on Content-Based recommendations, otherwise it relies more on Collaborative Filtering predictions.
+
+---
+
+## Tech Stack
+
+* **Core & API:** Python 3.10, FastAPI, Uvicorn
+* **Data & Machine Learning:** Pandas, Scikit-learn, Scikit-Surprise
+* **Databases:** MySQL 8.0, PostgreSQL 15, SQLAlchemy
+* **Orchestration & DevOps:** Docker & Docker Compose, Apache Airflow 2.10
+* **Tracking:** MLflow
+
+---
+
+## How to Run
+
+### Prerequisites
+* Install **Docker** and verify **Docker Desktop** is running.
+
+### Launching the Stack
+
+1. Run the following command in the root folder to build and start all containers:
+   ```bash
+   docker compose up --build
+   ```
+
+2. Access the services via the following URLs:
+
+   * **FastAPI Server:** [http://localhost:8000/docs](http://localhost:8000/docs) (Swagger UI for testing endpoints).
+   * **Airflow UI:** [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`).
+   * **MLflow UI:** Run this command on your host machine to view training performance:
+     ```bash
+     mlflow ui --backend-store-uri sqlite:///mlflow.db
+     ```
+
+---
+
+## API Endpoints
+
+* **`GET /health`**: Returns API status and lists which models are currently loaded in RAM.
+* **`GET /recommend/user/{user_id}`**: 
+  * Returns movie recommendations for a specific user.
+  * *Query Parameters:* `model` (`hybrid`, `svd`, `cb` - default: `hybrid`), `top_k` (default: 10).
+* **`GET /recommend/similar`**:
+  * Suggests similar movies based on a given movie title.
+  * *Query Parameters:* `title` (Exact movie title), `top_k` (default: 10).
