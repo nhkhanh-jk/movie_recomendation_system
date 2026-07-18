@@ -19,6 +19,10 @@ def train(args) -> None:
     train_ratings, test_ratings = train_test_split(ratings)
     all_ids                     = movies["movie_id"].tolist()
 
+    # Đảm bảo MLflow luôn ghi vào file mlflow.db tại thư mục gốc của dự án
+    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "mlflow.db"))
+    mlflow.set_tracking_uri(f"sqlite:///{db_path}")
+
     mlflow.set_experiment("movie-recommendation")
 
     # ── Content-Based (không có hyperparams để log) ─────────────────

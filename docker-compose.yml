@@ -96,6 +96,7 @@ services:
       - ./main.py:/opt/airflow/main.py
       - ./src:/opt/airflow/src
       - ./scripts:/opt/airflow/scripts
+      - ./mlflow.db:/opt/airflow/mlflow.db
       - airflow_logs:/opt/airflow/logs
     command: webserver
     depends_on:
@@ -120,6 +121,7 @@ services:
       - ./main.py:/opt/airflow/main.py
       - ./src:/opt/airflow/src
       - ./scripts:/opt/airflow/scripts
+      - ./mlflow.db:/opt/airflow/mlflow.db
       - airflow_logs:/opt/airflow/logs
     command: scheduler
     depends_on:
