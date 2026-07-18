@@ -128,6 +128,26 @@ services:
     networks:
       - ml_network
 
+    # Giao diện API kết nối với PostgreSQL để lấy dữ liệu phim và gọi Models gợi ý
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: recommendation_api
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+    volumes:
+      - ./src:/app/src
+      - ./models:/app/models
+      - ./api:/app/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ml_network
+
 volumes:
   mysql_data:
   postgres_data:
