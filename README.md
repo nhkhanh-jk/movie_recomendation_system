@@ -8,42 +8,7 @@ A complete movie recommendation system project that handles the entire pipeline:
 
 Here is how data flows through the system:
 
-```mermaid
-graph TD
-    subgraph Storage Layer
-        DB_MYSQL[(MySQL - OLTP)]
-        DB_POSTGRES[(PostgreSQL - OLAP)]
-    end
-
-    subgraph Data Pipeline
-        Airflow[Apache Airflow]
-        ETL[etl.py]
-    end
-
-    subgraph ML & Tracking
-        Train[main.py - Training]
-        MLflow[MLflow - Registry]
-        Models[(Saved Models .pkl)]
-    end
-
-    subgraph Serving Layer
-        API[FastAPI Service]
-        Client([Client / Browser])
-    end
-
-    %% Flow
-    DB_MYSQL -->|1. Extract| ETL
-    ETL -->|2. Clean & Transform| DB_POSTGRES
-    Airflow -->|Orchestrate| ETL
-    
-    DB_POSTGRES -->|3. Read Clean Data| Train
-    Train -->|4. Log Metrics| MLflow
-    Train -->|5. Save| Models
-    
-    Models -->|6. Load| API
-    DB_POSTGRES -->|7. Query Metadata| API
-    Client -->|8. Request Recs| API
-```
+![System Architecture](assets/system_architecture.png)
 
 1. **Raw Data (OLTP):** Stored in a MySQL instance (`movielens_oltp`).
 2. **ETL Pipeline (Airflow):** Apache Airflow orchestrates the daily DAG run. The `etl.py` script extracts raw data from MySQL, cleans genre strings, parses release years, and loads the clean dataset into a PostgreSQL data warehouse (`movielens_olap`).
@@ -97,14 +62,20 @@ We use the **MovieLens 1M dataset** containing:
    docker compose up --build
    ```
 
-2. Access the services via the following URLs:
+2. Once the services are fully initialized, you can access the web interfaces:
 
-   * **FastAPI Server:** [http://localhost:8000/docs](http://localhost:8000/docs) (Swagger UI for testing endpoints).
-   * **Airflow UI:** [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`).
-   * **MLflow UI:** Run this command on your host machine to view training performance:
-     ```bash
-     mlflow ui --backend-store-uri sqlite:///mlflow.db
-     ```
+## Web Interfaces
+
+| Service | URL | Credentials (if applicable) | Description |
+| --- | --- | --- | --- |
+| **FastAPI Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) | *None* | Interactive API playground to test recommendations |
+| **Apache Airflow** | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` | Pipeline monitoring and DAG orchestration dashboard |
+| **MLflow Dashboard** | Run `mlflow ui` command below | *None* | Model registry and training metrics logger |
+
+To open the **MLflow Dashboard** locally, run the following command on your host machine:
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
 
 ---
 
