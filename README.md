@@ -1,6 +1,6 @@
 # Movie Recommendation System (MLOps Pipeline)
 
-A complete movie recommendation system project that handles the entire pipeline: raw data storage, ETL cleaning, model training, metric tracking, and real-time API serving. The entire stack runs inside containerized environments using Docker Compose.
+A complete movie recommendation system project that handles the entire pipeline: raw data storage, ETL cleaning, model training, metric tracking, and real-time API serving.
 
 ---
 
